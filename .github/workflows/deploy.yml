@@ -40,8 +40,16 @@ jobs:
         run: |
           mkdir -p deploy_package/public
           mv release.zip deploy_package/
+
+          # Copy scripts to BOTH root and public to be safe
+          cp public/unzip_deploy.php deploy_package/
           cp public/unzip_deploy.php deploy_package/public/
+
+          cp public/migrate.php deploy_package/
           cp public/migrate.php deploy_package/public/
+
+          echo "Package contents:"
+          ls -R deploy_package/
 
       - name: FTP Upload Package
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
@@ -49,23 +57,33 @@ jobs:
           server: ${{ secrets.FTP_SERVER }}
           username: ${{ secrets.FTP_USER }}
           password: ${{ secrets.FTP_PASSWORD }}
+          # Explicitly set port 21 (standard for FTP/FTPS)
+          port: 21
           server-dir: ${{ secrets.FTP_PATH }}/
           local-dir: ./deploy_package/
-          # Important: Do not delete existing files on server (we are just uploading the zip)
           delete: false
 
       - name: Trigger Extraction
         run: |
           echo "Triggering unzip..."
           sleep 5
-          # Trigger the unzip script (assuming domain points to public/)
-          curl --fail https://bday.inovatifdigital.biz.id/unzip_deploy.php
-          echo "Unzip completed."
+          # Try root URL first
+          if curl --fail https://bday.inovatifdigital.biz.id/unzip_deploy.php; then
+            echo "Unzip triggered via root URL."
+          else
+            echo "Root URL failed, trying /public..."
+            curl --fail https://bday.inovatifdigital.biz.id/public/unzip_deploy.php
+          fi
 
       - name: Trigger Migration
         run: |
           echo "Triggering migration..."
           sleep 2
-          # Trigger the migrate script
-          curl --fail "https://bday.inovatifdigital.biz.id/migrate.php?key=${{ secrets.DEPLOY_KEY }}"
-          echo "Migration triggered."
+          KEY="${{ secrets.DEPLOY_KEY }}"
+          # Try root URL first
+          if curl --fail "https://bday.inovatifdigital.biz.id/migrate.php?key=$KEY"; then
+            echo "Migration triggered via root URL."
+          else
+             echo "Root URL failed, trying /public..."
+             curl --fail "https://bday.inovatifdigital.biz.id/public/migrate.php?key=$KEY"
+          fi

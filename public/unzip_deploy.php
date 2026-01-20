@@ -1,14 +1,29 @@
 <?php
 
 $zipFile = 'release.zip';
-// We are in public/, so project root is one level up
-$projectRoot = __DIR__ . '/../';
-$zipPath = $projectRoot . $zipFile;
+$projectRoot = __DIR__; // Default to current dir
 
-if (!file_exists($zipPath)) {
-    http_response_code(404);
-    echo "Error: $zipFile not found at $zipPath";
-    exit;
+// Check if we are in public/ (standard Laravel)
+if (file_exists(__DIR__ . '/../artisan')) {
+    $projectRoot = __DIR__ . '/../';
+}
+
+$zipPath = $projectRoot . '/' . $zipFile;
+
+// Clean path
+$projectRoot = realpath($projectRoot);
+$zipPath = realpath($projectRoot . '/' . $zipFile);
+
+if (!$zipPath || !file_exists($zipPath)) {
+    // Try looking in current dir if logic above failed
+    if (file_exists(__DIR__ . '/' . $zipFile)) {
+        $zipPath = __DIR__ . '/' . $zipFile;
+        $projectRoot = __DIR__;
+    } else {
+        http_response_code(404);
+        echo "Error: $zipFile not found. Searched in " . __DIR__ . " and parent.";
+        exit;
+    }
 }
 
 $zip = new ZipArchive;
