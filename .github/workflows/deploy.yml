@@ -1,4 +1,4 @@
-name: Deploy to cPanel
+name: Deploy to cPanel (FTP)
 
 on:
   push:
@@ -7,36 +7,50 @@ on:
   workflow_dispatch:
 
 jobs:
-  deploy:
+  web-deploy:
+    name: Deploy to cPanel via FTP
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1.0.3
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
         with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: ${{ secrets.SSH_PORT }}
-          script: |
-            cd /home/inop5385/public_html/bday.inovatifdigital.biz.id
-            git pull origin main
+          php-version: '8.2'
 
-            # Install Dependencies
-            /usr/local/bin/composer install --no-dev --optimize-autoloader
+      - name: Install Composer Dependencies
+        run: composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
 
-            # Build Assets (Adjust path if node/npm is different on server)
-            # You might need to add specific path to npm/node if not in default PATH
-            # npm install && npm run build
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
 
-            # Database & Cache
-            php artisan migrate --force
-            php artisan optimize:clear
-            php artisan config:cache
-            php artisan route:cache
-            php artisan view:cache
+      - name: Build Frontend Assets
+        run: |
+          npm install
+          npm run build
 
-            echo "Deployment finished successfully!"
+      - name: FTP Deploy
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USER }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          server-dir: ${{ secrets.FTP_PATH }}
+          # Exclude git internals, node_modules source, tests, and sensitive local files.
+          # We INCLUDE vendor and public/build
+          exclude: |
+            **/.git*
+            **/.git*/**
+            **/node_modules/**
+            **/tests/**
+            .env
+            .editorconfig
+            README.md
+            phpunit.xml
+          # Dry run first? No, user wants solution.
+          # State file tracks changes to avoid re-uploading everything every time.
+          # Dangerous: 'clean' option defaults to false usually, but we should be careful.
+          # This action syncs files.
