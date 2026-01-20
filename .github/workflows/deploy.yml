@@ -1,4 +1,4 @@
-name: Deploy to cPanel (FTP)
+name: Deploy to cPanel (Zip & Upload)
 
 on:
   push:
@@ -8,7 +8,7 @@ on:
 
 jobs:
   web-deploy:
-    name: Deploy to cPanel via FTP
+    name: Deploy to cPanel via Zip
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
@@ -32,25 +32,40 @@ jobs:
           npm install
           npm run build
 
-      - name: FTP Deploy
+      - name: Create Release Zip
+        run: |
+          zip -r release.zip . -x ".git/*" ".github/*" "tests/*" "node_modules/*" ".idea/*" ".vscode/*" "phpunit.xml" "README.md"
+
+      - name: Prepare Deployment Package
+        run: |
+          mkdir -p deploy_package/public
+          mv release.zip deploy_package/
+          cp public/unzip_deploy.php deploy_package/public/
+          cp public/migrate.php deploy_package/public/
+
+      - name: FTP Upload Package
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
           server: ${{ secrets.FTP_SERVER }}
           username: ${{ secrets.FTP_USER }}
           password: ${{ secrets.FTP_PASSWORD }}
           server-dir: ${{ secrets.FTP_PATH }}/
-          # Exclude git internals, node_modules source, tests, and sensitive local files.
-          # We INCLUDE vendor and public/build
-          exclude: |
-            **/.git*
-            **/.git*/**
-            **/node_modules/**
-            **/tests/**
-            .env
-            .editorconfig
-            README.md
-            phpunit.xml
-          # Dry run first? No, user wants solution.
-          # State file tracks changes to avoid re-uploading everything every time.
-          # Dangerous: 'clean' option defaults to false usually, but we should be careful.
-          # This action syncs files.
+          local-dir: ./deploy_package/
+          # Important: Do not delete existing files on server (we are just uploading the zip)
+          delete: false
+
+      - name: Trigger Extraction
+        run: |
+          echo "Triggering unzip..."
+          sleep 5
+          # Trigger the unzip script (assuming domain points to public/)
+          curl --fail https://bday.inovatifdigital.biz.id/unzip_deploy.php
+          echo "Unzip completed."
+
+      - name: Trigger Migration
+        run: |
+          echo "Triggering migration..."
+          sleep 2
+          # Trigger the migrate script
+          curl --fail "https://bday.inovatifdigital.biz.id/migrate.php?key=${{ secrets.DEPLOY_KEY }}"
+          echo "Migration triggered."
